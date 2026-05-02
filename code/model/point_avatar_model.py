@@ -15,7 +15,15 @@ import numpy as np
 from model.gaussian.gaussian_renderer import render as gs_render
 from model.gaussian import arguments as gs_args 
 from model.gaussian.cameras import Camera as GsCamera 
-from model.pytorch3d_compat import knn_points
+from model.pytorch3d_compat import knn_points, use_pytorch3d
+
+if use_pytorch3d():
+    from pytorch3d.renderer import (AlphaCompositor,
+                                    PerspectiveCameras,
+                                    PointsRasterizationSettings,
+                                    PointsRasterizer,
+                                    )
+    from pytorch3d.structures import Pointclouds
 # from model.layer.layer_model import LayerModel
 # from model.layer.layer_model import DeformLayerNetwork
 # from model.layer.lift_deform_model import LiftDeformNetwork
@@ -27,7 +35,11 @@ from torch.profiler import profile, record_function, ProfilerActivity
 print_flushed = partial(print, flush=True)
 
 
-class RasterSettings:
+class _InHouseRasterSettings:
+    """Lightweight stand-in for PointsRasterizationSettings used by the
+    in-house landmark renderer. Only stores the parameters that the
+    upstream code referenced; no rasterisation logic lives here."""
+
     def __init__(self, image_size, radius, points_per_pixel):
         self.image_size = image_size
         self.radius = radius
@@ -113,20 +125,50 @@ class PointAvatar(nn.Module):
             self.background = nn.Parameter(init_background)
         else:
             self.background = torch.ones(img_res[0] * img_res[1], 3).float().cuda()
-        self.raster_settings = RasterSettings(
-            image_size=img_res[0],
-            radius=self.pc.radius_factor * (0.75 ** math.log2(n_points / 100)),
-            points_per_pixel=10
-        )
-        # keypoint rasterizer is only for debugging camera intrinsics
-        self.raster_settings_kp = RasterSettings(
-            image_size=self.img_res[0],
-            radius=0.007,
-            points_per_pixel=1
-        )
+        if use_pytorch3d():
+            self.raster_settings = PointsRasterizationSettings(
+                image_size=img_res[0],
+                radius=self.pc.radius_factor * (0.75 ** math.log2(n_points / 100)),
+                points_per_pixel=10
+            )
+            # keypoint rasterizer is only for debugging camera intrinsics
+            self.raster_settings_kp = PointsRasterizationSettings(
+                image_size=self.img_res[0],
+                radius=0.007,
+                points_per_pixel=1
+            )
+            self.compositor = AlphaCompositor().cuda()
+        else:
+            self.raster_settings = _InHouseRasterSettings(
+                image_size=img_res[0],
+                radius=self.pc.radius_factor * (0.75 ** math.log2(n_points / 100)),
+                points_per_pixel=10
+            )
+            self.raster_settings_kp = _InHouseRasterSettings(
+                image_size=self.img_res[0],
+                radius=0.007,
+                points_per_pixel=1
+            )
 
 
-    def _render_landmarks(self, landmarks, R, T, intrinsics):
+    def _render_landmarks_p3d(self, landmarks, R, T, intrinsics):
+        cameras = PerspectiveCameras(device='cuda', R=R, T=T, K=intrinsics)
+        cameras.focal_length = intrinsics[:, [0, 1], [0, 1]]
+        cameras.principal_point = cameras.get_principal_point()
+        point_cloud = Pointclouds(points=landmarks, features=torch.ones_like(landmarks))
+        rasterizer = PointsRasterizer(cameras=cameras, raster_settings=self.raster_settings_kp)
+        fragments = rasterizer(point_cloud)
+        r = rasterizer.raster_settings.radius
+        dists2 = fragments.dists.permute(0, 3, 1, 2)
+        alphas = 1 - dists2 / (r * r)
+        images, _ = self.compositor(
+            fragments.idx.long().permute(0, 3, 1, 2),
+            alphas,
+            point_cloud.features_packed().permute(1, 0),
+        )
+        return images.permute(0, 2, 3, 1)
+
+    def _render_landmarks_inhouse(self, landmarks, R, T, intrinsics):
         batch_size, _, _ = landmarks.shape
         height, width = self.img_res
         cam_points = torch.bmm(landmarks, R) + T[:, None, :]
@@ -152,6 +194,11 @@ class PointAvatar(nn.Module):
                     c = (cc + dc).clamp(0, width - 1)
                     images[batch_id, r, c] = 1.0
         return images
+
+    def _render_landmarks(self, landmarks, R, T, intrinsics):
+        if use_pytorch3d():
+            return self._render_landmarks_p3d(landmarks, R, T, intrinsics)
+        return self._render_landmarks_inhouse(landmarks, R, T, intrinsics)
 
 
     def forward(

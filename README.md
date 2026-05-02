@@ -19,6 +19,28 @@ Please download the subject 3 from PointAvatar at https://dataset.ait.ethz.ch/do
 
 
 
+## PyTorch3D backend (in-house / upstream)
+
+This branch ships an in-house drop-in replacement for the small PyTorch3D
+surface this repository touches (`knn_points` with K=1, `sample_farthest_points`,
+`euler_angles_to_matrix("XYZ")`, and the evaluation-time landmark rasterizer).
+It is selected by default and works on CUDA 12.8 / RTX 5090 (sm_120) without
+needing PyTorch3D itself to be installed.
+
+To switch to the upstream PyTorch3D implementation at runtime, set the
+environment variable when launching:
+
+```sh
+GAUSSIAN_HS_USE_PYTORCH3D=1 python scripts/test.py ...
+```
+
+Keep this variable scoped to the invoking shell script (do not `export` it
+in `~/.bashrc` or via `source`-ed scripts) so it does not leak. See
+[memo/pytorch3d_dual_mode.md](memo/pytorch3d_dual_mode.md) for the full
+rationale and demo-script guidelines, and
+[memo/environment_notes.md](memo/environment_notes.md) for the
+`TORCH_CUDA_ARCH_LIST=12.0` build setting required for sm_120.
+
 ## Training and Testing
 
 To train and evaluate both the MLP and distilled version:
