@@ -7,6 +7,7 @@ sys.path.append('./')
 
 import utils.general as utils
 import utils.plots as plt
+from utils.torch_compat import load_trusted_checkpoint
 
 import wandb
 from functools import partial
@@ -316,7 +317,7 @@ class TrainRunner():
         if is_continue:
             raise NotImplementedError()
             old_checkpnts_dir = os.path.join(load_path, 'checkpoints')
-            saved_model_state = torch.load(
+            saved_model_state = load_trusted_checkpoint(
                 os.path.join(old_checkpnts_dir, 'ModelParameters', str(kwargs['checkpoint']) + ".pth"))
             self.start_epoch = saved_model_state['epoch']
             n_points = saved_model_state["model_state_dict"]['pc.points'].shape[0]
@@ -336,18 +337,18 @@ class TrainRunner():
                 {'params': list(self.model.parameters())},
             ], lr=self.lr)
 
-            data = torch.load(
+            data = load_trusted_checkpoint(
                 os.path.join(old_checkpnts_dir, self.scheduler_params_subdir, str(kwargs['checkpoint']) + ".pth"))
             self.scheduler.load_state_dict(data["scheduler_state_dict"])
 
             if self.optimize_inputs:
-                data = torch.load(
+                data = load_trusted_checkpoint(
                     os.path.join(old_checkpnts_dir, self.optimizer_inputs_subdir, str(kwargs['checkpoint']) + ".pth"))
                 try:
                     self.optimizer_cam.load_state_dict(data["optimizer_cam_state_dict"])
                 except:
                     print("input and camera optimizer parameter group doesn't match")
-                data = torch.load(
+                data = load_trusted_checkpoint(
                     os.path.join(old_checkpnts_dir, self.input_params_subdir, str(kwargs['checkpoint']) + ".pth"))
                 try:
                     if self.optimize_expression:
@@ -870,6 +871,5 @@ class TrainRunner():
         # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=50))
         # print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=50))
         self.save_checkpoints(iteration + 1, only_latest=True)
-
 
 

@@ -5,6 +5,7 @@ import torch
 
 import utils.general as utils
 import utils.plots as plt
+from utils.torch_compat import load_trusted_checkpoint
 
 from functools import partial
 from model.point_avatar_model import PointAvatar
@@ -122,7 +123,7 @@ class ReenactRunner():
         assert os.path.exists(old_checkpnts_dir)
         
         self.model_ckpt_path = os.path.join(old_checkpnts_dir, 'ModelParameters', str(kwargs['checkpoint']) + ".pth")
-        saved_model_state = torch.load(self.model_ckpt_path)
+        saved_model_state = load_trusted_checkpoint(self.model_ckpt_path)
         # n_points = saved_model_state["model_state_dict"]['pc.points'].shape[0]
         # self.model.pc.init(n_points)
         # self.model.pc = self.model.pc.cuda()
@@ -335,4 +336,3 @@ class ReenactRunner():
         # compress to video
         imgs = np.stack(imgs)
         torchvision.io.write_video(os.path.join(self.eval_dir, 'test.mp4'), imgs, fps=10, video_codec='h264')
-

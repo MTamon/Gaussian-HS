@@ -211,7 +211,7 @@ class FaceDataset(torch.utils.data.Dataset):
         # construct intrinsic matrix
         intrinsics = np.zeros((4, 4))
 
-        # from whatever camera convention to pytorch3d
+        # from whatever camera convention to normalized renderer coordinates
         intrinsics[0, 0] = focal_cxcy[0] * 2
         intrinsics[1, 1] = focal_cxcy[1] * 2
         intrinsics[0, 2] = (focal_cxcy[2] * 2 - 1.0) * -1

@@ -213,7 +213,7 @@ class DeformLayerNetwork(nn.Module):
         self.frame_noise_dim = frame_noise_dim
 
         # [1, 2, H, W]
-        self.uv = torch.stack(torch.meshgrid(torch.arange(img_h), torch.arange(img_w))).cuda()[None,...] / max(img_h, img_w) 
+        self.uv = torch.stack(torch.meshgrid(torch.arange(img_h), torch.arange(img_w), indexing='ij')).cuda()[None,...] / max(img_h, img_w) 
         self.uv = (self.uv - 0.5) * shrink_uv + 0.5 # leave some space in the edge
 
         self.uv_embed_fn, uv_embed_ch = get_embedder(feature_dim, 2) # abuse feature_dim for PE frequency

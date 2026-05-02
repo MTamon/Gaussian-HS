@@ -5,6 +5,7 @@ import torch
 
 import utils.general as utils
 import utils.plots as plt
+from utils.torch_compat import load_trusted_checkpoint
 
 from functools import partial
 from model.point_avatar_model import PointAvatar
@@ -101,7 +102,7 @@ class DistillRunner():
         assert os.path.exists(old_checkpnts_dir)
         
         self.model_ckpt_path = os.path.join(old_checkpnts_dir, 'ModelParameters', str(kwargs['checkpoint']) + ".pth")
-        saved_model_state = torch.load(self.model_ckpt_path)
+        saved_model_state = load_trusted_checkpoint(self.model_ckpt_path)
 
         self.model.pc.load_ply(os.path.join(old_checkpnts_dir, 'GaussianPly', str(kwargs['checkpoint']) + ".ply"))
 
@@ -179,5 +180,4 @@ class DistillRunner():
 
         # save texture
         torch.save(self.model.gs_img_model.feature_img.feature_img.data, str(Path(self.train_dir) / 'checkpoints' / 'ModelParameters' / 'distilled_feature_img.pth'))
-
 

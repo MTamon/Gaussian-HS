@@ -1,19 +1,19 @@
-imageio==2.22.0
+imageio==2.34.2
 lpips==0.1.4
-matplotlib==3.6.0
-opencv-python==4.6.0.66
-Pillow==9.2.0
+matplotlib==3.9.2
+opencv-python==4.10.0.84
+Pillow==10.4.0
 pyhocon==0.3.59
-scikit-image==0.19.3
-scipy==1.9.1
-trimesh==3.15.1
-chumpy==0.70 
-wandb==0.12.9
-protobuf==3.20.0
-numpy==1.23.3
-pandas==1.5.1
+scikit-image==0.25.2
+scipy==1.15.3
+trimesh==4.4.9
+chumpy==0.71
+wandb==0.17.8
+protobuf==4.25.5
+numpy==2.2.6
+pandas==2.2.3
 # functorch==0.1.13
-plyfile
-pyav
-einops
+plyfile==1.1
+av==12.3.0
+einops==0.8.0
 # timm

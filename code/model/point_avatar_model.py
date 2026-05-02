@@ -4,13 +4,6 @@ from functools import partial
 import torch
 import torch.nn as nn
 from flame.FLAME import FLAME
-from pytorch3d.ops import knn_points
-from pytorch3d.renderer import (AlphaCompositor,
-                                PerspectiveCameras,
-                                PointsRasterizationSettings,
-                                PointsRasterizer,
-                                )
-from pytorch3d.structures import Pointclouds
 
 # from functorch import vmap
 
@@ -22,6 +15,7 @@ import numpy as np
 from model.gaussian.gaussian_renderer import render as gs_render
 from model.gaussian import arguments as gs_args 
 from model.gaussian.cameras import Camera as GsCamera 
+from model.pytorch3d_compat import knn_points
 # from model.layer.layer_model import LayerModel
 # from model.layer.layer_model import DeformLayerNetwork
 # from model.layer.lift_deform_model import LiftDeformNetwork
@@ -31,6 +25,14 @@ from model.layer.gs_img_model import GsImgNetwork
 from torch.profiler import profile, record_function, ProfilerActivity
 
 print_flushed = partial(print, flush=True)
+
+
+class RasterSettings:
+    def __init__(self, image_size, radius, points_per_pixel):
+        self.image_size = image_size
+        self.radius = radius
+        self.points_per_pixel = points_per_pixel
+
 
 class PointAvatar(nn.Module):
     def __init__(self, conf, shape_params, img_res, canonical_expression, canonical_pose, use_background, gs_model_args: gs_args.ModelParams=None,
@@ -111,35 +113,44 @@ class PointAvatar(nn.Module):
             self.background = nn.Parameter(init_background)
         else:
             self.background = torch.ones(img_res[0] * img_res[1], 3).float().cuda()
-        self.raster_settings = PointsRasterizationSettings(
+        self.raster_settings = RasterSettings(
             image_size=img_res[0],
             radius=self.pc.radius_factor * (0.75 ** math.log2(n_points / 100)),
             points_per_pixel=10
         )
         # keypoint rasterizer is only for debugging camera intrinsics
-        self.raster_settings_kp = PointsRasterizationSettings(
+        self.raster_settings_kp = RasterSettings(
             image_size=self.img_res[0],
             radius=0.007,
             points_per_pixel=1
         )
-        self.compositor = AlphaCompositor().cuda()
 
 
-    def _render(self, point_cloud, cameras, render_kp=False):
-        rasterizer = PointsRasterizer(cameras=cameras, raster_settings=self.raster_settings if not render_kp else self.raster_settings_kp)
-        fragments = rasterizer(point_cloud)
-        r = rasterizer.raster_settings.radius
-        dists2 = fragments.dists.permute(0, 3, 1, 2)
-        alphas = 1 - dists2 / (r * r)
-        images, weights = self.compositor(
-            fragments.idx.long().permute(0, 3, 1, 2),
-            alphas,
-            point_cloud.features_packed().permute(1, 0),
-        )
-        images = images.permute(0, 2, 3, 1)
-        weights = weights.permute(0, 2, 3, 1)
+    def _render_landmarks(self, landmarks, R, T, intrinsics):
+        batch_size, _, _ = landmarks.shape
+        height, width = self.img_res
+        cam_points = torch.bmm(landmarks, R) + T[:, None, :]
+        depth = cam_points[..., 2]
+        z = depth.clamp_min(1e-6)
+        x_ndc = intrinsics[:, None, 0, 0] * cam_points[..., 0] / z + intrinsics[:, None, 0, 2]
+        y_ndc = intrinsics[:, None, 1, 1] * cam_points[..., 1] / z + intrinsics[:, None, 1, 2]
 
+        cols = ((1.0 - x_ndc) * 0.5 * (width - 1)).round().long()
+        rows = ((1.0 - y_ndc) * 0.5 * (height - 1)).round().long()
+        valid = (depth > 1e-6) & (rows >= 0) & (rows < height) & (cols >= 0) & (cols < width)
 
+        images = torch.zeros(batch_size, height, width, 3, dtype=landmarks.dtype, device=landmarks.device)
+        for batch_id in range(batch_size):
+            batch_valid = valid[batch_id]
+            if not batch_valid.any():
+                continue
+            rr = rows[batch_id, batch_valid]
+            cc = cols[batch_id, batch_valid]
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    r = (rr + dr).clamp(0, height - 1)
+                    c = (cc + dc).clamp(0, width - 1)
+                    images[batch_id, r, c] = 1.0
         return images
 
 
@@ -180,11 +191,7 @@ class PointAvatar(nn.Module):
             # identity transformation for body
             transformations = torch.cat([torch.eye(4).unsqueeze(0).unsqueeze(0).expand(batch_size, -1, -1, -1).float().cuda(), transformations], 1)
 
-        cameras = PerspectiveCameras(device='cuda', R=R, T=T+cam_pose_offset, K=intrinsics)
-        # make sure the cameras focal length is logged too
         focal_length = intrinsics[:, [0, 1], [0, 1]]
-        cameras.focal_length = focal_length
-        cameras.principal_point = cameras.get_principal_point()
 
         n_points = self.pc.points.shape[0]
         points = self.pc.points
@@ -434,8 +441,7 @@ class PointAvatar(nn.Module):
         if not self.training:
             # render landmarks for easier camera format debugging
             landmarks2d, landmarks3d = self.FLAMEServer.find_landmarks(verts, full_pose=flame_pose)
-            transformed_verts = Pointclouds(points=landmarks2d, features=torch.ones_like(landmarks2d))
-            rendered_landmarks = self._render(transformed_verts, cameras, render_kp=True)
+            rendered_landmarks = self._render_landmarks(landmarks2d, R, T + cam_pose_offset, intrinsics)
 
 
         # with record_function("Blend background"):

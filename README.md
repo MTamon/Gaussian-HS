@@ -6,9 +6,8 @@
 
 ## Getting Started
 * Clone this repo recursively: `git clone git@ChikaYan/Gaussian-HS.git --recursive`
-* Create a conda or python environment and activate. For e.g., `conda create -n anchor_gaussian python=3.9.18; conda activate anchor_gaussian`.
-* Install PyTorch 1.11.0 with conda or pip ([instructions](https://pytorch.org/get-started/previous-versions/)).
-* Install PyTorch3d, we tested with 0.6.2, but any version should be fine
+* Create a conda or python environment and activate. For e.g., `conda create -n anchor_gaussian python=3.11; conda activate anchor_gaussian`.
+* Install PyTorch 2.9 with CUDA 12.8.
 * Install other requirements: `pip install -r requirement.txt`
 * Install Gaussian Splatting dependencies `pip install submodules/diff-gaussian-rasterization submodules/simple-knn`
 * Download [FLAME model](https://flame.is.tue.mpg.de/download.php), choose **FLAME 2020** and unzip it, copy 'generic_model.pkl' into `./code/flame/FLAME2020`

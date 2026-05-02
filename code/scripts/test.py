@@ -5,6 +5,7 @@ import torch
 
 import utils.general as utils
 import utils.plots as plt
+from utils.torch_compat import load_trusted_checkpoint
 
 from functools import partial
 from model.point_avatar_model import PointAvatar
@@ -147,7 +148,7 @@ class TestRunner():
         assert os.path.exists(old_checkpnts_dir)
         
         self.model_ckpt_path = os.path.join(old_checkpnts_dir, 'ModelParameters', str(kwargs['checkpoint']) + ".pth")
-        saved_model_state = torch.load(self.model_ckpt_path)
+        saved_model_state = load_trusted_checkpoint(self.model_ckpt_path)
 
         self.model.pc.load_ply(os.path.join(old_checkpnts_dir, 'GaussianPly', str(kwargs['checkpoint']) + ".ply"))
 
@@ -283,7 +284,7 @@ class TestRunner():
 
             
             try:
-                data = torch.load(
+                data = load_trusted_checkpoint(
                     os.path.join(old_checkpnts_dir, self.input_params_subdir, str(kwargs['checkpoint']) + ".pth"))
                 if self.optimize_expression:
                     self.expression.load_state_dict(data["expression_state_dict"])
@@ -440,7 +441,7 @@ class TestRunner():
 
                 if self.optimize_warp_net:
                     # need to re-load the ckpt for every frame
-                    saved_model_state = torch.load(self.model_ckpt_path)
+                    saved_model_state = load_trusted_checkpoint(self.model_ckpt_path)
                     self.model.load_state_dict(saved_model_state["model_state_dict"]) #, strict=False)
                     self.model.gs_img_model.deform_net.train()
 
@@ -710,6 +711,5 @@ class TestRunner():
                         "test/ssim_no_head": metrics_no_head["ssim"],
                         "test/lpips_no_head": metrics_no_head["lpips"],
                     })
-
 
 

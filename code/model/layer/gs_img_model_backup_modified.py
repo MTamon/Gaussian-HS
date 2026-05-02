@@ -8,9 +8,8 @@ import torchvision
 import numpy as np
 import einops
 from .mlp_decoder import MLPDecoder2D
-from pytorch3d.ops import sample_farthest_points
+from model.pytorch3d_compat import euler_angles_to_matrix, sample_farthest_points
 from model.gaussian.utils.sh_utils import SH2RGB
-from pytorch3d.transforms import euler_angles_to_matrix
 import skimage
 
 from ..gaussian.utils.sh_utils import eval_sh, RGB2SH
@@ -312,7 +311,7 @@ class GsImgNetwork(nn.Module):
         self.base_warping_param = nn.Parameter(torch.tensor([[0., 0.], [1., 1.]]).type_as(self.anchor_uv_texture_target.data), requires_grad=False)
 
         self.anchor_xyz = nn.Parameter(torch.rand([self.N_anchor, 3], device='cuda').requires_grad_(True))
-        init_xy = torch.stack(torch.meshgrid(torch.linspace(-1,1,n_anchor), torch.linspace(-1,1,n_anchor))).type_as(self.anchor_xyz)
+        init_xy = torch.stack(torch.meshgrid(torch.linspace(-1,1,n_anchor), torch.linspace(-1,1,n_anchor), indexing='ij')).type_as(self.anchor_xyz)
         init_xy = init_xy.reshape([2, -1]).T * init_anchor_radius_range
         self.anchor_xyz.data[:,:2] = init_xy
 
@@ -351,7 +350,7 @@ class GsImgNetwork(nn.Module):
 
             
         # pixel coordinate spawning whole image
-        self.uv = torch.stack(torch.meshgrid(torch.arange(img_h), torch.arange(img_w))).cuda()[None,...] / max(img_h, img_w) 
+        self.uv = torch.stack(torch.meshgrid(torch.arange(img_h), torch.arange(img_w), indexing='ij')).cuda()[None,...] / max(img_h, img_w) 
 
         if deform_type == 'mlp':
             if self.apply_rigid_deform:
@@ -646,7 +645,7 @@ class GsImgNetwork(nn.Module):
         ###### bbox ######
         if self.distill_texture_bbox is not None:
             padding = self.feature_img.padding
-            uv = torch.stack(torch.meshgrid(torch.arange(-padding, self.img_h+padding), torch.arange(-padding, self.img_h+padding))).cuda()[None,...]
+            uv = torch.stack(torch.meshgrid(torch.arange(-padding, self.img_h+padding), torch.arange(-padding, self.img_h+padding), indexing='ij')).cuda()[None,...]
             # self.distill_texture_bbox = [-30, 320, 520, 520]
             bbox = self.distill_texture_bbox
             bbox_mask = (uv[:,:1] < bbox[1]) | (uv[:,1:] < bbox[0]) | (uv[:,:1] > bbox[3]) | (uv[:,1:] > bbox[2])
