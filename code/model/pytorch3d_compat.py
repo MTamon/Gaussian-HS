@@ -1,9 +1,61 @@
+"""Backend dispatcher for the PyTorch3D APIs used in this repository.
+
+Two backends are supported and chosen at import time via the
+``GAUSSIAN_HS_USE_PYTORCH3D`` environment variable:
+
+* unset / ``0`` (default) — use the in-house implementations defined below.
+  These are pure-PyTorch equivalents of the upstream functions for the
+  exact call patterns this repository uses (``knn_points`` with K=1,
+  ``sample_farthest_points`` with ``random_start_point=False``,
+  ``euler_angles_to_matrix`` with the ``XYZ`` convention). They have been
+  numerically verified against the upstream reference.
+
+* ``1`` — delegate directly to the installed ``pytorch3d`` package. Use
+  this when you have a working pytorch3d build on the target machine
+  (CUDA 12.8 / sm_120 / PyTorch 2.9) and want bit-identical behaviour to
+  the original code.
+
+See ``memo/pytorch3d_dual_mode.md`` for the rationale, demo-script
+guidelines and how to scope the variable so it does not leak into the
+caller's shell.
+"""
+
+import os
 from functools import reduce
 
 import torch
 
 
+def _flag_truthy(value: str) -> bool:
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+USE_PYTORCH3D: bool = _flag_truthy(os.environ.get("GAUSSIAN_HS_USE_PYTORCH3D", ""))
+
+if USE_PYTORCH3D:
+    try:
+        from pytorch3d.ops import knn_points as _p3d_knn_points
+        from pytorch3d.ops import sample_farthest_points as _p3d_sample_farthest_points
+        from pytorch3d.transforms import euler_angles_to_matrix as _p3d_euler_angles_to_matrix
+    except ImportError as exc:
+        raise ImportError(
+            "GAUSSIAN_HS_USE_PYTORCH3D=1 was set but the pytorch3d package "
+            "could not be imported. Either install pytorch3d (see "
+            "memo/environment_notes.md) or unset the variable to fall back "
+            "to the in-house implementations."
+        ) from exc
+
+
+def use_pytorch3d() -> bool:
+    """Whether the pytorch3d backend is currently selected."""
+    return USE_PYTORCH3D
+
+
 def knn_points(p1, p2, K=1, return_nn=False):
+    if USE_PYTORCH3D:
+        out = _p3d_knn_points(p1, p2, K=K, return_nn=return_nn)
+        return out.dists, out.idx, out.knn
+
     if K < 1:
         raise ValueError("K must be >= 1")
 
@@ -30,6 +82,9 @@ def knn_points(p1, p2, K=1, return_nn=False):
 
 
 def sample_farthest_points(points, K):
+    if USE_PYTORCH3D:
+        return _p3d_sample_farthest_points(points, K=K)
+
     if points.ndim != 3:
         raise ValueError("points must have shape (N, P, D)")
 
@@ -78,6 +133,9 @@ def _axis_angle_rotation(axis, angle):
 
 
 def euler_angles_to_matrix(euler_angles, convention):
+    if USE_PYTORCH3D:
+        return _p3d_euler_angles_to_matrix(euler_angles, convention)
+
     if euler_angles.shape[-1] != 3:
         raise ValueError("Invalid input euler angles.")
     if len(convention) != 3 or len(set(convention)) != 3:
