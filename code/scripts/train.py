@@ -1,4 +1,5 @@
 import os
+import csv
 from pyhocon import ConfigFactory
 import torch
 
@@ -19,6 +20,7 @@ from pathlib import Path
 from torch.profiler import profile, record_function, ProfilerActivity
 import torchvision
 from model.scheduler import ConstantSchedule, LinearSchedule, ExpSchedule, SequentialSchedule
+from tqdm import tqdm
 
 print = partial(print, flush=True)
 
@@ -84,6 +86,7 @@ class TrainRunner():
 
         self.eval_dir = os.path.join(self.expdir, train_split_name, 'eval')
         self.train_dir = os.path.join(self.expdir, train_split_name, 'train')
+        self.metrics_csv_path = os.path.join(self.train_dir, 'metrics.csv')
 
         if kwargs['is_continue']:
             if kwargs['load_path'] != '':
@@ -472,12 +475,61 @@ class TrainRunner():
 
         # copyfile(self.conf_path, os.path.join(self.train_dir, 'recording', 'config.conf'))
 
+    @staticmethod
+    def _format_progress_value(value):
+        if isinstance(value, float):
+            return f"{value:.3g}"
+        return value
+
+    def _append_metrics_csv(self, row):
+        path = Path(self.metrics_csv_path)
+        new_fields = [k for k in row.keys() if k not in self.metrics_csv_fields]
+        if new_fields:
+            old_rows = []
+            if path.exists():
+                with path.open('r', newline='') as f:
+                    reader = csv.DictReader(f)
+                    old_rows = list(reader)
+                    for field in reader.fieldnames or []:
+                        if field not in self.metrics_csv_fields:
+                            self.metrics_csv_fields.append(field)
+            self.metrics_csv_fields.extend(
+                field for field in new_fields
+                if field not in self.metrics_csv_fields
+            )
+
+            with path.open('w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=self.metrics_csv_fields)
+                writer.writeheader()
+                writer.writerows(old_rows)
+
+        write_header = not path.exists() or path.stat().st_size == 0
+        with path.open('a', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=self.metrics_csv_fields)
+            if write_header:
+                writer.writeheader()
+            writer.writerow(row)
+
     def run(self):
         acc_loss = {}
+        self.metrics_csv_fields = ['iteration', 'train_iter', 'data_index', 'method']
+        metrics_csv_path = Path(self.metrics_csv_path)
+        if metrics_csv_path.exists() and metrics_csv_path.stat().st_size > 0:
+            with metrics_csv_path.open('r', newline='') as f:
+                reader = csv.DictReader(f)
+                for field in reader.fieldnames or []:
+                    if field not in self.metrics_csv_fields:
+                        self.metrics_csv_fields.append(field)
         start_time = torch.cuda.Event(enable_timing=True)
         end_time = torch.cuda.Event(enable_timing=True)
 
         iteration = 0
+        progress_bar = tqdm(
+            total=self.train_iter,
+            initial=iteration,
+            desc=self.methodname,
+            dynamic_ncols=True,
+        )
 
         # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
 
@@ -511,6 +563,8 @@ class TrainRunner():
 
             for data_index, (indices, model_input, ground_truth) in enumerate(self.train_dataloader):
                 iteration += 1
+                if progress_bar.n < progress_bar.total:
+                    progress_bar.update(1)
 
                 if iteration % self.save_freq == 0 and iteration != 0:
                     self.save_checkpoints(iteration, only_latest=True)
@@ -728,7 +782,7 @@ class TrainRunner():
                             size_threshold = 20 if iteration > self.gs_opt.opacity_reset_interval else None
                             CAMERA_EXTEND = 1
                             gaussians.densify_and_prune(grad_thresh, 0.005, CAMERA_EXTEND, size_threshold)
-                            print(f"new points: {gaussians._xyz.shape[0]}")
+                            progress_bar.write(f"new points: {gaussians._xyz.shape[0]}")
                             # with (Path(dataset.model_path) / 'point_number.txt').open('a') as f:
                             #     f.write(f"Iter [{iteration}], Point: {gaussians._xyz.shape[0]}\n")
 
@@ -747,10 +801,6 @@ class TrainRunner():
                 if iteration % 50 == 0:
                     for k, v in acc_loss.items():
                         acc_loss[k] = sum(v) / len(v)
-                    print_str = '{0} [{1}] ({2}/{3}): '.format(self.methodname, data_index, iteration, self.train_iter)
-                    for k, v in acc_loss.items():
-                        print_str += '{}: {:.3g} '.format(k, v)
-                    print(print_str)
                     acc_loss['num_points'] = self.model.pc.points.shape[0]
                     acc_loss['radius'] = self.model.raster_settings.radius
 
@@ -765,6 +815,29 @@ class TrainRunner():
                         acc_loss['lift_deform/color_mean'] = model_outputs['color_lift_shift'].abs().mean().item()
 
                     acc_loss['lr'] = self.scheduler.get_last_lr()[0]
+                    metrics_row = {
+                        'iteration': iteration,
+                        'train_iter': self.train_iter,
+                        'data_index': data_index,
+                        'method': self.methodname,
+                    }
+                    metrics_row.update(acc_loss)
+                    self._append_metrics_csv(metrics_row)
+
+                    progress_keys = [
+                        'loss',
+                        'rgb_loss',
+                        'mask_loss',
+                        'vgg_loss',
+                        'dssim_loss',
+                        'num_points',
+                        'lr',
+                    ]
+                    progress_bar.set_postfix({
+                        k: self._format_progress_value(acc_loss[k])
+                        for k in progress_keys
+                        if k in acc_loss
+                    })
                     wandb.log(acc_loss, step=iteration)
                     acc_loss = {}
 
@@ -826,7 +899,7 @@ class TrainRunner():
                                 model_outputs[k] = v
                         plot_dir = [os.path.join(self.eval_dir, model_input['sub_dir'][i], 'iter_'+str(iteration)) for i in range(len(model_input['sub_dir']))]
                         img_names = model_input['img_name'][:, 0].cpu().numpy()
-                        print("Plotting images: {}".format(img_names))
+                        progress_bar.write("Plotting images: {}".format(img_names))
                         utils.mkdir_ifnotexists(os.path.join(self.eval_dir, model_input['sub_dir'][0]))
 
                         plt.plot(img_names,
@@ -842,7 +915,7 @@ class TrainRunner():
 
                     end_time.record()
                     torch.cuda.synchronize()
-                    print("Plot time per image: {} ms".format(start_time.elapsed_time(end_time) / len(self.plot_dataset)))
+                    progress_bar.write("Plot time per image: {} ms".format(start_time.elapsed_time(end_time) / len(self.plot_dataset)))
                     self.model.train()
                     if self.optimize_inputs:
                         if self.optimize_expression:
@@ -867,10 +940,9 @@ class TrainRunner():
             end_time.record()
             torch.cuda.synchronize()
             wandb.log({"timing_epoch": start_time.elapsed_time(end_time)}, step=iteration)
-            print("Epoch time: {} s".format(start_time.elapsed_time(end_time)/1000))
+            progress_bar.write("Epoch time: {} s".format(start_time.elapsed_time(end_time)/1000))
+        progress_bar.close()
 
         # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=50))
         # print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=50))
         self.save_checkpoints(iteration + 1, only_latest=True)
-
-
