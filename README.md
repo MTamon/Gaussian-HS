@@ -6,16 +6,15 @@
 
 ## Getting Started
 * Clone this repo recursively: `git clone git@ChikaYan/Gaussian-HS.git --recursive`
-* Create a conda or python environment and activate. For e.g., `conda create -n anchor_gaussian python=3.11; conda activate anchor_gaussian`.
-* Install PyTorch 2.9 with CUDA 12.8.
-* Install other requirements: `pip install -r requirement.txt`
-* Install Gaussian Splatting dependencies `pip install submodules/diff-gaussian-rasterization submodules/simple-knn`
-* Download [FLAME model](https://flame.is.tue.mpg.de/download.php), choose **FLAME 2020** and unzip it, copy 'generic_model.pkl' into `./code/flame/FLAME2020`
+* Install the pinned CUDA 12.8 environment: `bash setup.sh`
+* To install into an already active environment instead: `bash setup.sh --pip-only`
+* To download FLAME assets and the subject 001 demo dataset: `bash download_assets.sh --flame_user USER --flame_pass PASS`
+* Activate the environment before running: `conda activate gaussian-hs`
 
 ## Preparing dataset
 Our data format is the same as [IMavatar](https://github.com/zhengyuf/IMavatar/). 
 
-Please download the subject 3 from PointAvatar at https://dataset.ait.ethz.ch/downloads/IMavatar_data/data/subject3.zip, rename `subject3` to `001` and then merge with `001.zip` in our released, which contains the additional DWposes needed to run our method. 
+`download_assets.sh` downloads subject 3 from PointAvatar, renames it to `001`, and merges `001.zip` from the Gaussian-HS release, which contains the additional DWposes needed to run our method. The assembled dataset is placed under `../data/datasets/001/001`.
 
 
 
