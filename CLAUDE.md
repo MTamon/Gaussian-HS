@@ -1,12 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project
 
-Reference implementation of *Gaussian Head & Shoulders* (arXiv 2405.12069) — anchor-Gaussian-guided neural upper-body avatars. The training/eval/reenactment code lives under `code/`; the project ships two CUDA submodules (`submodules/diff-gaussian-rasterization`, `submodules/simple-knn`) and depends on FLAME 2020/2023 assets that are downloaded separately.
+Reference implementation of *Gaussian Head & Shoulders* (arXiv 2405.12069) — anchor-Gaussian-guided neural upper-body avatars. Training/eval/reenactment code lives under `code/`; two CUDA submodules under `submodules/`; FLAME 2020/2023 assets downloaded separately.
 
-This branch (`cuda128`) targets CUDA 12.8 / PyTorch 2.9.1 / Python 3.11 / RTX 5090 (sm_120 / Blackwell). It diverges from upstream in three structural ways: (1) a runtime-switchable in-house replacement for the small PyTorch3D surface this repo touches, (2) a `weights_only=False` wrapper around `torch.load`, and (3) deterministic pinned installs via `setup.sh`.
+Branch `cuda128` targets CUDA 12.8 / PyTorch 2.9.1 / Python 3.11 / RTX 5090 (sm_120 / Blackwell). Key divergences from upstream: (1) runtime-switchable in-house PyTorch3D replacement (`pytorch3d_compat`), (2) `weights_only=False` wrapper via `load_trusted_checkpoint`, (3) deterministic pinned installs via `setup.sh`.
 
 ## Setup, data, and run commands
 
@@ -31,49 +29,47 @@ python scripts/exp_runner.py --conf configs/ghs.conf --subject 001 --is_eval --r
 python scripts/exp_runner.py --conf configs/ghs.conf --subject 001 --is_reenact --conf_reenact configs/reenact_002.conf
 ```
 
-There is no test suite, linter, or formatter configured. The closest thing to a smoke check is the inline import block at the bottom of `setup.sh`.
-
-`train.sh` writes experiments to `../log/<subject>/<methodname>/` (relative to `code/`, i.e. one level above the repo root). The dataset is expected at `../data/datasets/001/001/{train,test}/...`. `download_assets.sh` lays both out correctly.
+No test suite, linter, or formatter. Smoke check: inline import block at the bottom of `setup.sh`.
 
 ## Architecture
 
-`code/scripts/exp_runner.py` is the single CLI entry point. Based on flags it constructs one of three runners — `TrainRunner`, `TestRunner`, `ReenactRunner` — each owning its own data loading / wandb init / checkpoint I/O. There is no shared base class; flag dispatch and per-subject conf overrides happen inside `exp_runner.py` itself (e.g. subject 001 forces a separate test sub-directory; subject 003 patches a `distill_texture_bbox`).
+`code/scripts/exp_runner.py` is the single CLI entry point; constructs one of `TrainRunner` / `TestRunner` / `ReenactRunner`. No shared base class; per-subject conf overrides happen in `exp_runner.py` (e.g. subject 001 separate test dir, subject 003 patches `distill_texture_bbox`).
 
-The core model is `code/model/point_avatar_model.py::PointAvatar`, which composes:
+Core model `PointAvatar` (`code/model/point_avatar_model.py`) composes:
 
-- `flame.FLAME` — FLAME 2020 head model loaded from `code/flame/FLAME2020/{generic_model.pkl, landmark_embedding.npy}`.
-- `model.deformer_network.ForwardDeformer` — LBS-based forward warp from canonical to posed space.
-- `model.gaussian.gaussian_model.GaussianModel` — the 3D Gaussian point cloud (densify/prune/save_ply) from the standard 3DGS lineage.
-- `model.gaussian.gaussian_renderer.render` — calls into `diff_gaussian_rasterization`.
-- `model.layer.gs_img_model.GsImgNetwork` — the *anchor Gaussian + texture warping* head from the paper. Uses FPS for anchor init and Euler→matrix for anchor orientation; both go through `pytorch3d_compat`.
+- `flame.FLAME` — FLAME 2020 head model
+- `model.deformer_network.ForwardDeformer` — LBS forward warp
+- `model.gaussian.gaussian_model.GaussianModel` — 3DGS point cloud
+- `model.gaussian.gaussian_renderer.render` — calls `diff_gaussian_rasterization`
+- `model.layer.gs_img_model.GsImgNetwork` — anchor Gaussian + texture warping; FPS init and Euler→matrix via `pytorch3d_compat`
 
-Loss assembly lives in `model.loss.Loss`; LR/loss-weight scheduling in `model.scheduler.{Constant,Linear,Exp,Sequential}Schedule`. VGG perceptual loss is a `model.vgg_feature` wrapper with a warm-up + linear ramp configured via `loss.vgg_*` keys.
+Loss: `model.loss.Loss`. Scheduling: `model.scheduler.{Constant,Linear,Exp,Sequential}Schedule`. VGG perceptual loss via `model.vgg_feature` with warm-up + linear ramp (`loss.vgg_*` keys).
 
-Configs use HOCON (`pyhocon`). `code/configs/default.conf` is the base; `ghs.conf` extends it via `include required("./default.conf")`; `reenact_*.conf` are tiny overlay files merged on top via `ConfigTree.merge_configs`. Per-CLI-flag conf mutations (e.g. `--run_fast_test` → `affine_type=projective`, `test.opt_iter=50`) happen in `exp_runner.py` *after* the merge.
+Configs: HOCON (`pyhocon`). `default.conf` is base; `ghs.conf` extends via `include required`; `reenact_*.conf` are overlays via `ConfigTree.merge_configs`. CLI flag mutations apply in `exp_runner.py` after merge.
 
-## Things specific to this branch
+## Branch-specific notes
 
-**PyTorch3D dispatcher (`code/model/pytorch3d_compat.py`).** The four PyTorch3D APIs the repo uses (`knn_points` K=1, `sample_farthest_points`, `euler_angles_to_matrix("XYZ")`, and the eval-time landmark rasterizer in `point_avatar_model.py`) have in-house pure-PyTorch equivalents that are numerically verified against upstream. Backend is selected at *import time* by the `GAUSSIAN_HS_USE_PYTORCH3D` env var — set to `1` to use upstream PyTorch3D, anything else (default) uses the in-house path. **Do not `export` this variable** in `~/.bashrc` or in `source`-d scripts; scope it to a single python invocation: `GAUSSIAN_HS_USE_PYTORCH3D=1 python scripts/test.py ...`. Once `pytorch3d_compat` has been imported the choice is frozen for that process. New renderer-style usages should follow the `if use_pytorch3d():` guard pattern in `point_avatar_model.py`. See `memo/pytorch3d_dual_mode.md`.
+**PyTorch3D dispatcher (`code/model/pytorch3d_compat.py`).** In-house pure-PyTorch equivalents for `knn_points` (K=1), `sample_farthest_points`, `euler_angles_to_matrix("XYZ")`, and the eval-time landmark rasterizer — numerically verified against upstream. Backend selected at import time via `GAUSSIAN_HS_USE_PYTORCH3D` env var (`1` = upstream, default = in-house). **Do not `export`** in `~/.bashrc` or sourced scripts — scope per invocation: `GAUSSIAN_HS_USE_PYTORCH3D=1 python scripts/test.py ...`. Choice is frozen after first import. New usages follow the `if use_pytorch3d():` pattern in `point_avatar_model.py`. See `memo/pytorch3d_dual_mode.md`.
 
-**Checkpoint loading.** PyTorch 2.6+ defaults `torch.load(weights_only=True)`, which rejects this repo's checkpoints (they contain optimizer/scheduler state and HOCON objects). Always load via `utils.torch_compat.load_trusted_checkpoint`, never raw `torch.load`. Only fall back to raw `torch.load(..., weights_only=True)` if the input is third-party / untrusted.
+**Checkpoint loading.** PyTorch 2.6+ defaults `weights_only=True`, rejecting this repo's checkpoints. Always use `utils.torch_compat.load_trusted_checkpoint`; never raw `torch.load` for project checkpoints.
 
-**`torch.meshgrid`.** Always pass `indexing='ij'` explicitly; the implicit default was removed.
+**`torch.meshgrid`.** Always pass `indexing='ij'` explicitly.
 
-**NumPy 2.x.** `numpy==2.2.6` is pinned. Don't reintroduce removed aliases (`np.float`, `np.int`, `np.bool`, `np.complex`) — use `np.float64` etc. directly. `chumpy==0.71` is built from `mattloper/chumpy@580566e` because the PyPI build is broken under NumPy 2; `setup.sh` enforces the version pin after install.
+**NumPy 2.x.** `numpy==2.2.6` pinned. Use `np.float64` etc. — removed aliases (`np.float`, `np.int`, `np.bool`, `np.complex`) must not be reintroduced. `chumpy==0.71` built from `mattloper/chumpy@580566e` (PyPI build broken under NumPy 2).
 
-**CUDA build flags.** `setup.sh` exports `TORCH_CUDA_ARCH_LIST=7.5;8.0;8.6;8.9;9.0;12.0` and `FORCE_CUDA=1`. The `12.0` is what enables sm_120 (RTX 5090). Use the same arch list when rebuilding `submodules/*` or installing pytorch3d from source.
+**CUDA build flags.** `TORCH_CUDA_ARCH_LIST=7.5;8.0;8.6;8.9;9.0;12.0` and `FORCE_CUDA=1` (12.0 = sm_120 for RTX 5090). Use same arch list when rebuilding `submodules/*` or building pytorch3d from source.
 
-**Pinned, no-deps installs.** Every Python package in `setup.sh` is installed with `--no-deps` against an exact pinned version; do not `pip install` anything new without pinning it the same way, or the resolver will pull conflicting transitive versions. `requirement.txt` is *not* the source of truth for this branch — `setup.sh` is. PyTorch / torchvision are pulled from the cu128 index (`https://download.pytorch.org/whl/cu128`).
+**Pinned installs.** All packages installed `--no-deps` at exact pinned versions. Do not `pip install` without pinning. `setup.sh` is the source of truth (not `requirement.txt`). PyTorch/torchvision from `https://download.pytorch.org/whl/cu128`.
 
-## Notes for adding scripts
+## Adding scripts
 
-- Place new entry points under `code/scripts/` and prefer extending `exp_runner.py` flags over adding new top-level scripts. Runners are constructed with `**kwargs` from the parsed argparse namespace — adding a new option means threading it through `exp_runner.py` and the relevant runner's `__init__`.
-- Use `partial(print, flush=True)` (existing pattern) if you need stdout to flush during long runs.
-- Anything that loads a project checkpoint goes through `load_trusted_checkpoint`. Anything that touches PyTorch3D APIs goes through `pytorch3d_compat`. For demo scripts that need the upstream path, write `GAUSSIAN_HS_USE_PYTORCH3D=1 python ...` in the wrapper shell script, never `export`.
+- New entry points under `code/scripts/`; prefer extending `exp_runner.py` flags over new top-level scripts.
+- Use `partial(print, flush=True)` for flushed stdout in long runs.
+- Project checkpoints → `load_trusted_checkpoint`. PyTorch3D APIs → `pytorch3d_compat`. Upstream path in demo scripts → `GAUSSIAN_HS_USE_PYTORCH3D=1 python ...` in the shell wrapper, never `export`.
 
-## Reference docs in repo
+## Reference docs
 
-- `memo/pytorch3d_dual_mode.md` — backend dispatch design, env-var scoping rules, equivalence verification results.
-- `memo/environment_notes.md` — pinned versions, sm_120 build notes, PyTorch3D source-build recipe if needed.
-- `memo/code_change_log.md` — log of CUDA-12.8 / PyTorch-2.9 porting changes.
-- `README.md` — public-facing setup + paper links.
+- `memo/pytorch3d_dual_mode.md` — backend dispatch design and equivalence verification
+- `memo/environment_notes.md` — pinned versions, sm_120 build notes, PyTorch3D source-build recipe
+- `memo/code_change_log.md` — CUDA-12.8 / PyTorch-2.9 porting log
+- `README.md` — public-facing setup + paper links
