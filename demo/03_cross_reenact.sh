@@ -112,7 +112,14 @@ else
     METHOD="${CONF_PARENT}/${CONF_STEM}"
 fi
 EXPDIR="${LOG_DIR}/${SOURCE}/${METHOD}"
-CKPT="${EXPDIR}/train/checkpoints/ModelParameters/latest.pth"
+# train_split_name mirrors code/scripts/exp_runner.py:55,84 — subject 001
+# overrides dataset.train.sub_dir=['train']; other subjects use the default
+# ['all'] from code/configs/default.conf:76.
+case "${SOURCE}" in
+    001) SPLIT="train" ;;
+    *)   SPLIT="all" ;;
+esac
+CKPT="${EXPDIR}/${SPLIT}/train/checkpoints/ModelParameters/latest.pth"
 if [[ ! -f "${CKPT}" ]]; then
     echo "[03_cross_reenact.sh] no trained checkpoint at ${CKPT}" >&2
     echo "  Run: bash demo/02_train_subject.sh --subject ${SOURCE}" >&2
@@ -180,7 +187,7 @@ else
     REENACT_TMP="${REENACT_TMP_DIR}/reenact_${TARGET}.conf"
     cat > "${REENACT_TMP}" <<EOF
 dataset {
-    test_reenact_subject = ${TARGET}
+    test_reenact_subject = "${TARGET}"
     test {
         frame_interval = [0, ${MAX_FRAMES}]
     }
@@ -202,7 +209,7 @@ EVAL_NAME="eval"
 if [[ "${QUICK}" == "1" ]]; then
     EVAL_NAME="eval_quick"
 fi
-EXPECTED_OUT="${EXPDIR}/train/${EVAL_NAME}_reenact_${TARGET}"
+EXPECTED_OUT="${EXPDIR}/${SPLIT}/train/${EVAL_NAME}_reenact_${TARGET}"
 
 echo "[03_cross_reenact.sh] source=${SOURCE}  target=${TARGET}  method=${METHOD}"
 echo "[03_cross_reenact.sh] checkpoint=${CKPT}"

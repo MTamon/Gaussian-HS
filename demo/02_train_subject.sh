@@ -103,7 +103,14 @@ if [[ "${CONF_PARENT}" == "confs" ]]; then
 else
     METHOD="${CONF_PARENT}/${CONF_STEM}"
 fi
-EXPDIR="${LOG_DIR}/${SUBJECT}/${METHOD}/train"
+# train_split_name mirrors code/scripts/exp_runner.py:55,84 — subject 001
+# overrides dataset.train.sub_dir=['train']; other subjects use the default
+# ['all'] from code/configs/default.conf:76.
+case "${SUBJECT}" in
+    001) SPLIT="train" ;;
+    *)   SPLIT="all" ;;
+esac
+EXPDIR="${LOG_DIR}/${SUBJECT}/${METHOD}/${SPLIT}/train"
 
 # Verify dataset
 INSTANCE_DIR="${DATA_DIR}/${SUBJECT}/${SUBJECT}/train"

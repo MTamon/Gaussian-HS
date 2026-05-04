@@ -111,6 +111,30 @@ PIL プラグイン更新で `as_gray` が非サポート。後継は `mode='L'`
 `code/scripts/metric_mask_pred.py:120,129`, `code/utils/metrics.py:270,279` を
 `mode='L'` に統一。
 
+## 8. demo wrapper のチェックポイントパスと HOCON quote 修正 (2026-05 追加)
+
+smoke run で `demo/03_cross_reenact.sh` の pre-flight が偽陰性を出していた件と、
+HOCON が数値として `test_reenact_subject` をパースする件をまとめて修正。
+
+* チェックポイント実体は `${expdir}/${train_split_name}/train/checkpoints/...`
+  (`code/scripts/train.py:86`, `code/scripts/reenact.py:51`)。`train_split_name`
+  は `code/scripts/exp_runner.py:55,84` で **subject 001 のみ `'train'` に上書き**、
+  他は `code/configs/default.conf:76` の既定 `['all']`。
+  `demo/02_train_subject.sh:106` / `demo/03_cross_reenact.sh:115,205` はこの
+  分岐を反映していなかった (subject 001 で `train` が一段欠落) ので、両 wrapper
+  に `case "${SOURCE/SUBJECT}" in 001) SPLIT=train ;; *) SPLIT=all ;; esac` を
+  追加して `${EXPDIR}/${SPLIT}/train/...` を組み立てるよう修正。
+* HOCON は unquoted の `001` / `003` を integer としてパースするため、
+  `get_string` 経由でも `"1"` / `"3"` に化けて `code/datasets/real_dataset.py:103`
+  の `os.path.join(data_folder, subject_name, subject_name, dir)` がデータを
+  見失う。`demo/03_cross_reenact.sh:183` の自動生成テンプレートと
+  `code/configs/reenact_003.conf:4` の `test_reenact_subject` を
+  `"${TARGET}"` / `"003"` と quote して string 強制。`reenact_002.conf` の
+  `Turnbull3` は文字列パース確定なので無修正。
+* test-time optimization 初期化時の `TestInputParameters/latest.pth [Errno 2]`
+  ログは初回訓練後に前回 state を探しに行く正常系の warning。挙動として
+  正しいので修正なし。
+
 ## 残タスク
 
 * `submodules/diff-gaussian-rasterization` と `submodules/simple-knn` の
