@@ -8,6 +8,7 @@ sys.path.append('./')
 import utils.general as utils
 import utils.plots as plt
 from utils.torch_compat import load_trusted_checkpoint
+from utils.wandb_compat import to_plain_dict
 
 import wandb
 from functools import partial
@@ -62,10 +63,10 @@ class TrainRunner():
 
         os.environ['WANDB_DIR'] = os.path.join(self.exps_folder_name)
         wandb.init(
-            project=kwargs['wandb_workspace'], 
-            name=self.methodname, 
-            group=self.subject, 
-            config=self.conf, 
+            project=kwargs['wandb_workspace'],
+            name=self.methodname,
+            group=self.subject,
+            config=to_plain_dict(self.conf),
             tags=kwargs['wandb_tags'],
             mode=kwargs['wandb_mode'],
             )

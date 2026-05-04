@@ -14,3 +14,4 @@
 | [pytorch3d_dual_mode.md](pytorch3d_dual_mode.md) | 内製コード / pytorch3d を環境変数で切り替える二系統運用の設計と、デモスクリプト作成時の env var スコーピング指針 |
 | [environment_notes.md](environment_notes.md) | 目標環境（CUDA 12.8 / PyTorch 2.9 / RTX 5090 / gcc 11 / NumPy 2.2.6 / chumpy 0.71）と pip install --no-deps 運用、各依存の補足 |
 | [code_change_log.md](code_change_log.md) | 既存の改修内容（torch.load wrapper、pytorch3d 内製化、torch.meshgrid indexing 等）と、今後デモスクリプト等で踏まえるべき点 |
+| [training_densifier_issue.md](training_densifier_issue.md) | CUDA 12.8 / PyTorch 2.9 環境で訓練 600 iter ほどで全 Gaussian が prune されて `reshape(0, -1)` クラッシュする現象の調査ヒント |

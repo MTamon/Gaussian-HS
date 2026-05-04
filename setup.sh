@@ -177,7 +177,11 @@ install_no_deps psutil==7.1.3
 install_no_deps sentry-sdk==2.43.0
 install_no_deps setproctitle==1.3.6
 install_no_deps smmap==5.0.2
-install_no_deps wandb==0.17.8
+install_no_deps annotated_types==0.7.0
+install_no_deps typing_inspection==0.4.2
+install_no_deps pydantic_core==2.41.5
+install_no_deps pydantic==2.12.4
+install_no_deps wandb==0.22.3
 
 # Build helpers and local CUDA extensions.
 install_no_deps ninja==1.13.0

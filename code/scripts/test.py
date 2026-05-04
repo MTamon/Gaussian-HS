@@ -6,6 +6,7 @@ import torch
 import utils.general as utils
 import utils.plots as plt
 from utils.torch_compat import load_trusted_checkpoint
+from utils.wandb_compat import to_plain_dict
 
 from functools import partial
 from model.point_avatar_model import PointAvatar
@@ -56,10 +57,10 @@ class TestRunner():
         wandb_id_path = Path(self.expdir) / train_split_name / 'wandb_id.txt'
         if self.wandb_debug_log:
             wandb.init(
-                project=kwargs['wandb_workspace'], 
-                name="[test]"+self.methodname, 
-                group=self.subject, 
-                config=self.conf, 
+                project=kwargs['wandb_workspace'],
+                name="[test]"+self.methodname,
+                group=self.subject,
+                config=to_plain_dict(self.conf),
                 mode=kwargs['wandb_mode'],
                 tags=kwargs['wandb_tags'],
             )

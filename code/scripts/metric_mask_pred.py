@@ -117,7 +117,7 @@ def cal_metrics(output_dir, gt_dir, pred_file_name, load_npz=False, no_cloth=Fal
 
         if no_cloth_mask:
             def load_semantic(path, img_res):
-                img = imageio.imread(path, as_gray=True)
+                img = imageio.imread(path, mode='L')
                 img = cv2.resize(img, (int(img_res), int(img_res)))
                 return img
             semantic_path = osp.join(os.path.join(gt_dir, "..", "semantic", filename))
@@ -126,7 +126,7 @@ def cal_metrics(output_dir, gt_dir, pred_file_name, load_npz=False, no_cloth=Fal
             mask[mask_cloth] = 0.
         elif no_head:
             def load_semantic(path, img_res):
-                img = imageio.imread(path, as_gray=True)
+                img = imageio.imread(path, mode='L')
                 img = cv2.resize(img, (int(img_res), int(img_res)))
                 return img
             semantic_path = osp.join(os.path.join(gt_dir, "..", "semantic", filename))

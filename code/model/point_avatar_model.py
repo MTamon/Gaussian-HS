@@ -260,8 +260,8 @@ class PointAvatar(nn.Module):
         
         # with record_function("Transform points"):
         transformed_points, transform_rot = self.transform_pts(pnts_c=points,
-                                                pose_feature=pose_feature.unsqueeze(1).expand(-1, n_points, -1).reshape(total_points, -1),
-                                                betas=expression.unsqueeze(1).expand(-1, n_points, -1).reshape(total_points, -1),
+                                                pose_feature=pose_feature.unsqueeze(1).expand(-1, n_points, -1).flatten(0, 1),
+                                                betas=expression.unsqueeze(1).expand(-1, n_points, -1).flatten(0, 1),
                                                 transformations=transformations.unsqueeze(1).expand(-1, n_points, -1, -1, -1).reshape(total_points, *transformations.shape[1:]),
                                                 )
         

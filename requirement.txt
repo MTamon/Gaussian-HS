@@ -8,7 +8,7 @@ scikit-image==0.25.2
 scipy==1.15.3
 trimesh==4.4.9
 chumpy==0.71
-wandb==0.17.8
+wandb==0.22.3
 protobuf==4.25.5
 numpy==2.2.6
 pandas==2.2.3

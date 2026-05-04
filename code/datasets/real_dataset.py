@@ -473,17 +473,17 @@ def load_rgb(path, img_res):
 
 
 def load_mask(path, img_res):
-    alpha = imageio.imread(path, as_gray=True)
+    alpha = imageio.imread(path, mode='L')
     alpha = skimage.img_as_float32(alpha)
 
     alpha = cv2.resize(alpha, (int(img_res[0]), int(img_res[1])))
-    object_mask = alpha / 255
+    object_mask = alpha
 
     return object_mask
 
 
 def load_semantic(path, img_res):
-    img = imageio.imread(path, as_gray=True)
+    img = imageio.imread(path, mode='L')
     img = cv2.resize(img, tuple(img_res))
     return img
 

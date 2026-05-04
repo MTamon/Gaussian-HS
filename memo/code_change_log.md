@@ -90,12 +90,40 @@ einops==0.8.0
 PyTorch / pytorch3d / CUDA サブモジュール (`diff-gaussian-rasterization`,
 `simple-knn`) は requirement.txt に含めず、`setup.sh` で個別ビルドする想定。
 
+## 6. wandb 0.17+ と pyhocon ConfigTree の非互換 (2025-05 追加)
+
+`wandb.init(config=ConfigTree(...))` を呼ぶと、wandb が config 内の各値で
+`v.get("_type")` を default なしに呼び、pyhocon `ConfigTree.get` が dict 非互換で
+`ConfigMissingException` を投げてクラッシュする。wandb / pyhocon どちらの
+バージョン上げでも解消しない。
+
+* `code/utils/wandb_compat.py::to_plain_dict` を追加（再帰的に dict / list へ展開）。
+* `code/scripts/train.py:65`, `code/scripts/test.py:62` の `wandb.init(config=self.conf, ...)`
+  を `config=to_plain_dict(self.conf)` 経由に変更。
+* `setup.sh` の wandb pin を `0.17.8` → `0.22.3` に更新し、依存の
+  `pydantic==2.12.4` / `pydantic_core==2.41.5` / `typing_inspection==0.4.2` /
+  `annotated_types==0.7.0` を `--no-deps` で追加。`requirement.txt` 側の wandb pin も同期。
+
+## 7. imageio 2.37 で `as_gray=True` 削除 (2025-05 追加)
+
+PIL プラグイン更新で `as_gray` が非サポート。後継は `mode='L'` (uint8) または
+`mode='F'` (float)。`code/datasets/real_dataset.py:476,486`,
+`code/scripts/metric_mask_pred.py:120,129`, `code/utils/metrics.py:270,279` を
+`mode='L'` に統一。
+
 ## 残タスク
 
-* `setup.sh` の作成（PyTorch 2.9+CUDA 12.8 のインストール、CUDA 拡張の
-  sm_120 ビルド、pytorch3d を入れる場合の `TORCH_CUDA_ARCH_LIST=12.0`
-  指定、chumpy ソースビルド）。
 * `submodules/diff-gaussian-rasterization` と `submodules/simple-knn` の
-  sm_120 ビルド確認（実機ビルドが必要、未着手）。
+  sm_120 ビルド確認は完了（`setup.sh` で `TORCH_CUDA_ARCH_LIST=...;12.0` を
+  指定してビルド済み）。
+* CUDA 12.8 / PyTorch 2.9 環境で訓練 600 iter 程度で全 Gaussian が prune される現象
+  → `memo/training_densifier_issue.md` に調査出発点を整理。densifier の挙動差 +
+  PyTorch 2.x の `reshape(0, -1)` 厳格化の合わせ技。
+* `default.conf` の `data_folder = ../data/datasets`, `exps_folder = ../log/` は
+  cwd=code/ 起点だが `download_assets.sh` の DATA_ROOT (repo 親) と整合しない
+  ため、`demo/02_train_subject.sh` / `demo/03_cross_reenact.sh` 側で `--data-root`
+  / `--log-dir` 引数 + temp conf override で吸収中。本体側でも統一するなら
+  `default.conf` を `../../data/datasets`, `../../log/` に直す検討余地あり。
 * デモスクリプト類は `pytorch3d_dual_mode.md` の env var スコーピング指針に
-  沿って作成すること。
+  沿って作成済み（`demo/01_preprocess_and_visualize.sh`, `demo/02_train_subject.sh`,
+  `demo/03_cross_reenact.sh`）。
