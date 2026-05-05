@@ -183,6 +183,43 @@ install_no_deps pydantic_core==2.41.5
 install_no_deps pydantic==2.12.4
 install_no_deps wandb==0.22.3
 
+# SMIRK / RVM / face-parsing / DWpose preprocessing dependencies.
+# All pinned to the versions HRAvatar (cuda128) ships, so dependent
+# subprocesses (RobustVideoMatting, face-parsing.PyTorch) and the SMIRK
+# encoder behave identically here.
+install_no_deps controlnet_aux==0.0.10
+install_no_deps onnxruntime-gpu==1.20.1
+install_no_deps mediapipe==0.10.21
+install_no_deps timm==1.0.11
+install_no_deps huggingface_hub==0.26.2
+install_no_deps safetensors==0.4.5
+install_no_deps loguru==0.7.2
+install_no_deps attrs==24.2.0
+install_no_deps flatbuffers==24.3.25
+install_no_deps sounddevice==0.5.0
+install_no_deps sentencepiece==0.2.0
+install_no_deps coloredlogs==15.0.1
+install_no_deps humanfriendly==10.0
+install_no_deps pims==0.7
+install_no_deps slicerator==1.1.0
+
+# DWpose stack (yolox + dw-ll_ucoco_384, via controlnet_aux). Requires
+# the mm-* family; mmcv has no prebuilt cu128/torch2.9 wheel and is built
+# from source here. mmdet 3.3.0 caps mmcv at <2.2.0 so we pin mmcv 2.1.0.
+# xtcocotools 1.14.3 wheel is built against numpy 1.x and breaks under
+# numpy 2.2.6 with a dtype-size error; --no-binary forces a clean build.
+install_no_deps openmim==0.3.9
+install_no_deps mmengine==0.10.5
+install_no_deps yapf==0.40.2 addict==2.4.0 termcolor==2.5.0
+install_no_deps rich==13.9.4 markdown-it-py==3.0.0 mdurl==0.1.2 pygments==2.18.0
+install_no_deps importlib_metadata==8.5.0 zipp==3.21.0
+install_no_deps mmcv==2.1.0
+install_no_deps mmdet==3.3.0
+install_no_deps mmpose==1.3.2
+install_no_deps terminaltables==3.1.10 shapely==2.0.6 munkres==1.1.4
+install_no_deps json-tricks==3.17.3 pycocotools==2.0.8
+python -m pip install --no-deps --no-binary xtcocotools xtcocotools==1.14.3
+
 # Build helpers and local CUDA extensions.
 install_no_deps ninja==1.13.0
 
@@ -220,6 +257,9 @@ import gdown, bs4, soupsieve  # noqa: F401
 import diff_gaussian_rasterization  # noqa: F401
 import simple_knn  # noqa: F401
 from model import pytorch3d_compat  # noqa: F401
+import mediapipe, timm, controlnet_aux, onnxruntime  # noqa: F401  # preprocess deps
+import mmcv, mmdet, mmpose  # noqa: F401  # DWpose stack
+from mmcv.ops import nms  # noqa: F401  # mmcv CUDA build sanity
 print("OK")
 PY
 
