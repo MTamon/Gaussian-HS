@@ -131,6 +131,14 @@ HOCON が数値として `test_reenact_subject` をパースする件をまと�
   `code/configs/reenact_003.conf:4` の `test_reenact_subject` を
   `"${TARGET}"` / `"003"` と quote して string 強制。`reenact_002.conf` の
   `Turnbull3` は文字列パース確定なので無修正。
+* reenact 時の `dataset.test.sub_dir` も併せて override 必要。`exp_runner.py`
+  の subject 001 用 `test.sub_dir=['test']` 設定 (line 86) は **非-reenact
+  ブランチに限定**されているため、`is_reenact` で early-return する経路だと
+  default の `['all']` が残り `001/001/all` を読みに行って `AssertionError:
+  Data directory ... is empty` で落ちる (`real_dataset.py:104`)。
+  `demo/03_cross_reenact.sh` の自動生成テンプレートに
+  `test.sub_dir = ["test"]` を追加して、wrapper の pre-flight が要求している
+  `${TARGET}/${TARGET}/test/` 構造と整合させた。
 * test-time optimization 初期化時の `TestInputParameters/latest.pth [Errno 2]`
   ログは初回訓練後に前回 state を探しに行く正常系の warning。挙動として
   正しいので修正なし。

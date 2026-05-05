@@ -185,10 +185,16 @@ else
     REENACT_TMP_DIR="${TMPDIR:-/tmp}/ghs-demo"
     mkdir -p "${REENACT_TMP_DIR}"
     REENACT_TMP="${REENACT_TMP_DIR}/reenact_${TARGET}.conf"
+    # test.sub_dir defaults to ['all'] (default.conf:85). exp_runner.py's
+    # subject-001 override (test.sub_dir=['test'], json_name=flame_params.json)
+    # is in the non-reenact branch only, so we must mirror it here. The wrapper
+    # already pre-flight-checks ${TARGET}/${TARGET}/test/, so binding the test
+    # split to 'test' is also the right default for cross-reenact targets.
     cat > "${REENACT_TMP}" <<EOF
 dataset {
     test_reenact_subject = "${TARGET}"
     test {
+        sub_dir = ["test"]
         frame_interval = [0, ${MAX_FRAMES}]
     }
 }
